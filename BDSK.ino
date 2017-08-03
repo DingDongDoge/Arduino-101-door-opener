@@ -10,6 +10,12 @@
  
 #include <CurieBLE.h>
 #include <SoftwareSerial.h>
+#define lcdTxPin 10
+#define SOUND_BUZZER_FOR_3_SECONDS 3
+#define SOUND_BUZZER_FOR_90_SECONDS 90
+#define BUZZER_OFF 0
+#define ONE_SECOND 1000
+#define HALF_SECOND 500
 int link_loss_alert_level = 0;
 int immediate_alert_level = 0;
 int ledPin1 = 3;
@@ -19,16 +25,10 @@ int speakerPin = 9;
 int volume[3] = { 0, 30, 90 };
 int alert_may_be_required = 0;
 int buzzer_alert_level = 0;
-#define lcdTxPin = 10;
-SoftwareSerial LCD = SoftwareSerial(0, lcdTxPin);
-const int LCDdelay=10;
-char buf[16];
-#define SOUND_BUZZER_FOR_3_SECONDS 3
-#define SOUND_BUZZER_FOR_90_SECONDS 90
-#define BUZZER_OFF 0
-#define ONE_SECOND 1000
-#define HALF_SECOND 500
 int alert_counter = BUZZER_OFF;
+char buf[16];
+const int LCDdelay=10;
+SoftwareSerial LCD = SoftwareSerial(0, lcdTxPin);
 
 // BLE objects
 BLEPeripheral blePeripheral;
@@ -60,6 +60,7 @@ BLEService ProximityMonitoring("3E099910293F11E493BDAFD0FE6D1DFD");
 
 BLECharacteristic ProximityMonitoring_ClientProximity("3E099911293F11E493BDAFD0FE6D1DFD", ProximityMonitoring_ClientProximity_props, 2);
 
+// LCD functions
 void lcdPosition(int row, int col) {
   LCD.write(0xFE); //command flag
   LCD.write((col + row*16 + 32)); //position
@@ -88,6 +89,7 @@ void serCommand(){ //a general function to call the command flag for issuing all
   LCD.write(0xFE);
 }
 
+// LED functions
 void flash(unsigned char led,uint16_t delayms, unsigned char times){
   for (int i=0;i<times;i++) {
     digitalWrite(led, HIGH);
@@ -130,6 +132,7 @@ void alertControl(void) {
   }
 }
 
+// main set up functions
 void setup() {
   Serial.begin(9600);
   Serial.println("setup()");
@@ -158,7 +161,9 @@ void setup() {
   pinMode(ledPin1, OUTPUT);
   pinMode(ledPin2, OUTPUT);
   pinMode(ledPin3, OUTPUT);
+  
   allLedsOff();
+  
   LCD.begin(9600);
   backlightOn() ;
   clearLCD();
@@ -173,6 +178,7 @@ void loop() {
   // if a central is connected to peripheral:
   if (central) {
     lcdText("Connected");
+    alert_may_be_required = 1;
     Serial.print("Connected to central: ");
     Serial.println(central.address());
 
@@ -180,7 +186,7 @@ void loop() {
     while (central.connected()) {
 
         if (LinkLoss_AlertLevel.written()) {
-        // application logic for handling WRITE or WRITE_WITHOUT_RESPONSE on characteristic Link Loss Alert Level goes here
+         // application logic for handling WRITE or WRITE_WITHOUT_RESPONSE on characteristic Link Loss Alert Level goes here
          Serial.println("LinkLoss_AlertLevel.written()");
          link_loss_alert_level = LinkLoss_AlertLevel.value()[0];
          int ledpin = getPinNumber(link_loss_alert_level);
@@ -215,12 +221,21 @@ void loop() {
          lcdText(buf);
          }
 
-        alertControl();
+         alertControl();
         
     }
+    sprintf(buf, "Disconnected: %d", link_loss_alert_level);
+    lcdText(buf);
+    allLedsOff();
+    if (link_loss_alert_level > 0 && alert_may_be_required == 1) {
+     allLedsOff();
+     buzzer_alert_level = link_loss_alert_level;
+     alert_counter = SOUND_BUZZER_FOR_90_SECONDS;
+     alert_may_be_required = 0;
+    }
+    alertControl();
 
     lcdText("Disconnected");
-    
     allLedsOff();
     
     // when the central disconnects, print it out:
